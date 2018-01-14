@@ -13,6 +13,7 @@ using Eigen::VectorXd;
 class UKF {
 public:
 
+
   ///* initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;
 
@@ -67,6 +68,10 @@ public:
   ///* Sigma point spreading parameter
   double lambda_;
 
+  // radar specific measurement noise covariance matrix
+  MatrixXd Noise_radar_;
+  // radar specific measurement noise covariance matrix
+  MatrixXd Noise_lidar_;
 
   /**
    * Constructor
@@ -89,19 +94,86 @@ public:
    * matrix
    * @param delta_t Time between k and k+1 in s
    */
-  void Prediction(double delta_t);
+  void Predict(double delta_t);
 
   /**
-   * Updates the state and the state covariance matrix using a laser measurement
-   * @param meas_package The measurement at k+1
-   */
-  void UpdateLidar(MeasurementPackage meas_package);
+     * Updates the state and the state covariance matrix
+     * @param meas_package The measurement at k+1
+     */
+  void Update(MeasurementPackage meas_package);
 
   /**
-   * Updates the state and the state covariance matrix using a radar measurement
-   * @param meas_package The measurement at k+1
+   * Generates Sigma Points
+   * @param {int} n_x the dimension of the state vector
+   * @param {int} lambda the distance of the Sigma Points relative to the mean
+   * @param {VectorXd} x the state vector
+   * @param {MatrixXd} P the covariance matrix
    */
-  void UpdateRadar(MeasurementPackage meas_package);
+  MatrixXd GenerateSigmaPoints(int nx, int lambda, VectorXd x, MatrixXd P);
+
+  /**
+   * Generate augmented Sigma Points
+   * @param {int} n_aug the dimension of the augmented matrix
+   * @param {int} lambda the distance of the Sigma Points relative to the mean
+   * @param {int} std_a the process noise standard deviation longitudinal acceleration
+   * @param {int} std_yawdd the process noise standard deviation yaw acceleration
+   * @param {VectorXd} x the state vector
+   * @param {MatrixXd} P the covariance matrix
+   */
+  MatrixXd GenerateAugmentedSigmaPoints(int n_aug, int lambda, int std_a, int std_yawdd, VectorXd x, MatrixXd P);
+
+  /** Prediction of Sigma Points
+   * @param {int} n_x the dimension of the state vector
+   * @param {int} n_aug the dimension of the augmented matrix
+   * @param {MatrixXd} Xsig_aug the augmented Sigma Points
+   * @param {int} delta_t the time step
+   */
+  MatrixXd PredictSigmaPoints(int n_x, int n_aug, MatrixXd Xsig_aug, int delta_t);
+
+  /**Set weights
+   * @param {int} lambda the distance of the Sigma Points relative to the mean
+   * @param {int} n_aug the dimension of the augmented matrix
+   */
+  VectorXd SetWeights(int lambda, int n_aug);
+
+  /** Predict state mean
+   * @param {int} n_aug the dimension of the augmented matrix
+   * @param {MatrixXd} Xsig_pred the predicted sigma points
+   * @param {VectorXd} weights the weights sigma points based on the lambda value
+   */
+  MatrixXd PredictMean(int n_aug, VectorXd weights, MatrixXd Xsig_pred);
+
+  /** Predict covariance
+   * @param {int} n_aug the dimension of the augmented matrix
+   * @param {VectorXd} weights the weights sigma points based on the lambda value
+   * @param {MatrixXd} Xsig_pred the predicted sigma points
+   * @param {VectorXd} x the state
+   */
+  MatrixXd PredictCovariance(int n_aug, VectorXd weights, MatrixXd Xsig_pred, VectorXd x);
+
+  /* Calculation of the innovation covariance Matrix S
+   * @param {int} n_z the dimension of the measurement vector
+   * @param {int} n_aug the dimension of the augmented matrix
+   * @param {VectorXd} weights the weights sigma points based on the lambda value
+   * @param {MatrixXd} Zsig the measurement matrix
+   * @param {VectorXd} z_pred the predicted state
+   * @param {MatrixXd} R the noise covariance matrix
+   */
+  MatrixXd CalculateInnovationCovarianceMatrix(int n_z, int n_aug, VectorXd weights, MatrixXd Zsig, VectorXd z_pred, MatrixXd Noise, bool normalizeAngles);
+
+  /**
+   * Calculation of the Kalman Gain
+   * @param {int} n_x the dimension of the state vector
+   * @param {int} n_aug the dimension of the augmented matrix
+   * @param {MatrixXd} Zsig the measurement matrix
+   * @param {MatrixXd} Xsig_pred the predicted Sigma Points
+   * @param {VectorXd} weights the weights sigma points based on the lambda value
+   * @param {MatrixXd} S the innovation covariance matrix
+   * @param {VectorXd} z_pred the predicted state
+   * @param {VectorXd} x the state vector
+   */
+  MatrixXd CalculateKalmanGain(int n_x, int n_z, int n_aug, MatrixXd Zsig, MatrixXd Xsig_pred, VectorXd weights, MatrixXd S, VectorXd z_pred, VectorXd x, bool normalizeAngles);
+
 };
 
 #endif /* UKF_H */
