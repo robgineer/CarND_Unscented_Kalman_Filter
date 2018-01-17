@@ -103,15 +103,6 @@ public:
   void Update(MeasurementPackage meas_package);
 
   /**
-   * Generates Sigma Points
-   * @param {int} n_x the dimension of the state vector
-   * @param {int} lambda the distance of the Sigma Points relative to the mean
-   * @param {VectorXd} x the state vector
-   * @param {MatrixXd} P the covariance matrix
-   */
-  MatrixXd GenerateSigmaPoints(int nx, int lambda, VectorXd x, MatrixXd P);
-
-  /**
    * Generate augmented Sigma Points
    * @param {int} n_aug the dimension of the augmented matrix
    * @param {int} lambda the distance of the Sigma Points relative to the mean
@@ -128,7 +119,7 @@ public:
    * @param {MatrixXd} Xsig_aug the augmented Sigma Points
    * @param {int} delta_t the time step
    */
-  MatrixXd PredictSigmaPoints(int n_x, int n_aug, MatrixXd Xsig_aug, int delta_t);
+  MatrixXd PredictSigmaPoints(int n_x, int n_aug, MatrixXd Xsig_aug, double delta_t);
 
   /**Set weights
    * @param {int} lambda the distance of the Sigma Points relative to the mean
