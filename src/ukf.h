@@ -12,8 +12,6 @@ using Eigen::VectorXd;
 
 class UKF {
 public:
-
-
   ///* initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;
 
@@ -105,19 +103,19 @@ public:
   /**
    * Generate augmented Sigma Points
    * @param {int} n_aug the dimension of the augmented matrix
-   * @param {int} lambda the distance of the Sigma Points relative to the mean
-   * @param {int} std_a the process noise standard deviation longitudinal acceleration
-   * @param {int} std_yawdd the process noise standard deviation yaw acceleration
+   * @param {double} lambda the distance of the Sigma Points relative to the mean
+   * @param {double} std_a the process noise standard deviation longitudinal acceleration
+   * @param {double} std_yawdd the process noise standard deviation yaw acceleration
    * @param {VectorXd} x the state vector
    * @param {MatrixXd} P the covariance matrix
    */
-  MatrixXd GenerateAugmentedSigmaPoints(int n_aug, int lambda, int std_a, int std_yawdd, VectorXd x, MatrixXd P);
+  MatrixXd GenerateAugmentedSigmaPoints(int n_aug, double lambda, double std_a, double std_yawdd, VectorXd x, MatrixXd P);
 
   /** Prediction of Sigma Points
    * @param {int} n_x the dimension of the state vector
    * @param {int} n_aug the dimension of the augmented matrix
    * @param {MatrixXd} Xsig_aug the augmented Sigma Points
-   * @param {int} delta_t the time step
+   * @param {double} delta_t the time step
    */
   MatrixXd PredictSigmaPoints(int n_x, int n_aug, MatrixXd Xsig_aug, double delta_t);
 
@@ -125,7 +123,7 @@ public:
    * @param {int} lambda the distance of the Sigma Points relative to the mean
    * @param {int} n_aug the dimension of the augmented matrix
    */
-  VectorXd SetWeights(int lambda, int n_aug);
+  VectorXd SetWeights(double lambda, int n_aug);
 
   /** Predict state mean
    * @param {int} n_aug the dimension of the augmented matrix

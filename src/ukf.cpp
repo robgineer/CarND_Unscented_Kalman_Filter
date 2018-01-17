@@ -35,10 +35,10 @@ UKF::UKF() {
   P_ = MatrixXd(n_x_, n_x_);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 1.5;
+  std_a_ = 1;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 0.5;
+  std_yawdd_ = 0.8;
   
   //DO NOT MODIFY measurement noise values below these are provided by the sensor manufacturer.
   // Laser measurement noise standard deviation position1 in m
@@ -97,7 +97,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 
 	cout << "UKF: INIT " << endl;
 
-	/** Set initial values to eye */
+	/** Set initial values to Identity */
 	P_ 	<< 	  1, 0, 0, 0, 0,
 	          0, 1, 0, 0, 0,
 	          0, 0, 1, 0, 0,
@@ -191,9 +191,6 @@ void UKF::Update(MeasurementPackage meas_package) {
 		Noise = Noise_radar_;
 		normalizeAngles = true;
 
-		z = VectorXd(n_z);
-		z = meas_package.raw_measurements_;
-
 		Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
 		//transform sigma points into measurement space
 		for (int i = 0; i < 2 * n_aug_ + 1; i++)
@@ -221,9 +218,6 @@ void UKF::Update(MeasurementPackage meas_package) {
 		Noise = Noise_lidar_;
 		normalizeAngles = false;
 
-		z = VectorXd(n_z);
-		z =  meas_package.raw_measurements_;
-
 		Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
 		//transform sigma points into measurement space
 		for (int i = 0; i < 2 * n_aug_ + 1; i++)
@@ -237,7 +231,7 @@ void UKF::Update(MeasurementPackage meas_package) {
 		}
 	}
 	else
-	{
+	{/* Ground truth values. Do not evaluate. */
 		return;
 	}
 
@@ -253,7 +247,10 @@ void UKF::Update(MeasurementPackage meas_package) {
 
 	MatrixXd K = CalculateKalmanGain(n_x_, n_z, n_aug_, Zsig, Xsig_pred_, weights_, S, z_pred, x_, normalizeAngles);
 
+	z = VectorXd(n_z);
+	z =  meas_package.raw_measurements_;
 	VectorXd z_diff = z - z_pred;
+
 	if(normalizeAngles)
 	{
 		//angle normalization
@@ -265,6 +262,159 @@ void UKF::Update(MeasurementPackage meas_package) {
 	x_ = x_ + K * z_diff;
 	P_ = P_ - K*S*K.transpose();
 }
+
+
+
+/*************************************************************
+** HELPER FUNCTIONS FOR PREDICTION STEP						*
+**************************************************************/
+/**
+ * Generate augmented Sigma Points
+ * @param {int} n_aug the dimension of the augmented matrix
+ * @param {double} lambda the distance of the Sigma Points relative to the mean
+ * @param {double} std_a the process noise standard deviation longitudinal acceleration
+ * @param {double} std_yawdd the process noise standard deviation yaw acceleration
+ * @param {VectorXd} x the state vector
+ * @param {MatrixXd} P the covariance matrix */
+MatrixXd UKF::GenerateAugmentedSigmaPoints(int n_aug, double lambda, double std_a, double std_yawdd, VectorXd x, MatrixXd P){
+
+	//create augmented mean vector
+	VectorXd x_aug = VectorXd(n_aug);
+	//create augmented state covariance
+	MatrixXd P_aug = MatrixXd(n_aug, n_aug);
+	//create sigma point matrix
+	MatrixXd Xsig_aug = MatrixXd(n_aug, 2 * n_aug + 1);
+	//create augmented mean state
+	x_aug.head(5) = x;
+	x_aug(5) = 0;
+	x_aug(6) = 0;
+	//create augmented covariance matrix
+	P_aug.fill(0.0);
+	P_aug.topLeftCorner(5,5) = P;
+	P_aug(5,5) = std_a*std_a;
+	P_aug(6,6) = std_yawdd*std_yawdd;
+	//create square root matrix
+	MatrixXd L = P_aug.llt().matrixL();
+	//create augmented sigma points
+	Xsig_aug.col(0)  = x_aug;
+	for (int i = 0; i< n_aug; i++)
+	{
+		Xsig_aug.col(i+1)       = x_aug + sqrt(lambda+n_aug) * L.col(i);
+		Xsig_aug.col(i+1+n_aug) = x_aug - sqrt(lambda+n_aug) * L.col(i);
+	}
+	return Xsig_aug;
+}
+
+/** Prediction of Sigma Points
+ * @param {int} n_x the dimension of the state vector
+ * @param {int} n_aug the dimension of the augmented matrix
+ * @param {MatrixXd} Xsig_aug the augmented Sigma Points
+ * @param {double} delta_t the time step */
+MatrixXd UKF::PredictSigmaPoints(int n_x, int n_aug, MatrixXd Xsig_aug, double delta_t){
+
+	MatrixXd Xsig_pred = MatrixXd(n_x, 2 * n_aug + 1);
+
+	//predict sigma points
+	for (int i = 0; i< 2*n_aug+1; i++)
+	{
+		//extract values for better readability
+		double p_x 		= Xsig_aug(0,i);
+		double p_y 		= Xsig_aug(1,i);
+		double v 		= Xsig_aug(2,i);
+		double yaw 		= Xsig_aug(3,i);
+		double yawd 		= Xsig_aug(4,i);
+		double nu_a 		= Xsig_aug(5,i);
+		double nu_yawdd 	= Xsig_aug(6,i);
+
+		//predicted state values
+		double px_p, py_p;
+
+		//avoid division by zero
+		if (fabs(yawd) > 0.001) {
+			px_p = p_x + v/yawd * ( sin (yaw + yawd*delta_t) - sin(yaw));
+			py_p = p_y + v/yawd * ( cos(yaw) - cos(yaw+yawd*delta_t) );
+		}
+		else {
+			px_p = p_x + v*delta_t*cos(yaw);
+			py_p = p_y + v*delta_t*sin(yaw);
+		}
+
+		double v_p = v;
+		double yaw_p = yaw + yawd*delta_t;
+		double yawd_p = yawd;
+
+		//add noise
+		px_p = px_p + 0.5*nu_a*delta_t*delta_t * cos(yaw);
+		py_p = py_p + 0.5*nu_a*delta_t*delta_t * sin(yaw);
+		v_p = v_p + nu_a*delta_t;
+
+		yaw_p = yaw_p + 0.5*nu_yawdd*delta_t*delta_t;
+		yawd_p = yawd_p + nu_yawdd*delta_t;
+
+		//write predicted sigma point into right column
+		Xsig_pred(0,i) = px_p;
+		Xsig_pred(1,i) = py_p;
+		Xsig_pred(2,i) = v_p;
+		Xsig_pred(3,i) = yaw_p;
+		Xsig_pred(4,i) = yawd_p;
+	}
+	return Xsig_pred;
+}
+
+/**Set weights
+ * @param {double} lambda the distance of the Sigma Points relative to the mean
+ * @param {int} n_aug the dimension of the augmented matrix */
+VectorXd UKF::SetWeights(double lambda, int n_aug){
+
+	VectorXd weights = VectorXd(2*n_aug+1);
+	double weight_0 = lambda/(lambda+n_aug);
+	weights(0) = weight_0;
+	for (int i=1; i<2*n_aug+1; i++)
+	{
+		double weight = 0.5/(n_aug+lambda);
+		weights(i) = weight;
+	}
+	return weights;
+}
+
+/** Predict state mean
+ * @param {int} n_aug the dimension of the augmented matrix
+ * @param {MatrixXd} Xsig_pred the predicted sigma points
+ * @param {VectorXd} weights the weights sigma points based on the lambda value  */
+MatrixXd UKF::PredictMean(int n_aug, VectorXd weights, MatrixXd Xsig_pred){
+
+	VectorXd x = VectorXd(5);
+	 x.fill(0.0);
+	 for (int i = 0; i < 2 * n_aug + 1; i++)
+	 {  //iterate over sigma points
+		 x = x+ weights(i) * Xsig_pred.col(i);
+	 }
+	return x;
+}
+
+/** Predict covariance
+ * @param {int} n_aug the dimension of the augmented matrix
+ * @param {VectorXd} weights the weights sigma points based on the lambda value
+ * @param {MatrixXd} Xsig_pred the predicted sigma points
+ * @param {VectorXd} x the state */
+MatrixXd UKF::PredictCovariance(int n_aug, VectorXd weights, MatrixXd Xsig_pred, VectorXd x){
+
+	//predicted state covariance matrix
+	MatrixXd P = MatrixXd(5, 5);
+	//predicted state covariance matrix
+	P.fill(0.0);
+	for (int i = 0; i < 2 * n_aug + 1; i++)
+	{  //iterate over sigma points
+	    // state difference
+		VectorXd x_diff = Xsig_pred.col(i) - x;
+	    //angle normalization
+	    while (x_diff(3)> M_PI){x_diff(3)-=2.*M_PI;}
+	    while (x_diff(3)< -M_PI){x_diff(3)+=2.*M_PI;}
+	    P = P + weights(i) * x_diff * x_diff.transpose() ;
+	  }
+	return P;
+}
+
 
 /*************************************************************
 ** HELPER FUNCTIONS FOR UPDATE STEP  						*
@@ -341,158 +491,5 @@ MatrixXd UKF::CalculateKalmanGain(int n_x, int n_z, int n_aug, MatrixXd Zsig, Ma
 	}
 	//Kalman gain K;
 	MatrixXd K = Tc * S.inverse();
-
 	return K;
-
-}
-
-
-/*************************************************************
-** HELPER FUNCTIONS FOR PREDICTION STEP						*
-**************************************************************/
-/**
- * Generate augmented Sigma Points
- * @param {int} n_aug the dimension of the augmented matrix
- * @param {int} lambda the distance of the Sigma Points relative to the mean
- * @param {int} std_a the process noise standard deviation longitudinal acceleration
- * @param {int} std_yawdd the process noise standard deviation yaw acceleration
- * @param {VectorXd} x the state vector
- * @param {MatrixXd} P the covariance matrix */
-MatrixXd UKF::GenerateAugmentedSigmaPoints(int n_aug, int lambda, int std_a, int std_yawdd, VectorXd x, MatrixXd P){
-
-	//create augmented mean vector
-	VectorXd x_aug = VectorXd(n_aug);
-	//create augmented state covariance
-	MatrixXd P_aug = MatrixXd(n_aug, n_aug);
-	//create sigma point matrix
-	MatrixXd Xsig_aug = MatrixXd(n_aug, 2 * n_aug + 1);
-	//create augmented mean state
-	x_aug.head(5) = x;
-	x_aug(5) = 0;
-	x_aug(6) = 0;
-	//create augmented covariance matrix
-	P_aug.fill(0.0);
-	P_aug.topLeftCorner(5,5) = P;
-	P_aug(5,5) = std_a*std_a;
-	P_aug(6,6) = std_yawdd*std_yawdd;
-	//create square root matrix
-	MatrixXd L = P_aug.llt().matrixL();
-	//create augmented sigma points
-	Xsig_aug.col(0)  = x_aug;
-	for (int i = 0; i< n_aug; i++)
-	{
-		Xsig_aug.col(i+1)       = x_aug + sqrt(lambda+n_aug) * L.col(i);
-		Xsig_aug.col(i+1+n_aug) = x_aug - sqrt(lambda+n_aug) * L.col(i);
-	}
-	return Xsig_aug;
-}
-
-/** Prediction of Sigma Points
- * @param {int} n_x the dimension of the state vector
- * @param {int} n_aug the dimension of the augmented matrix
- * @param {MatrixXd} Xsig_aug the augmented Sigma Points
- * @param {int} delta_t the time step */
-MatrixXd UKF::PredictSigmaPoints(int n_x, int n_aug, MatrixXd Xsig_aug, double delta_t){
-
-	MatrixXd Xsig_pred = MatrixXd(n_x, 2 * n_aug + 1);
-
-	//predict sigma points
-	for (int i = 0; i< 2*n_aug+1; i++)
-	{
-		//extract values for better readability
-		double p_x 		= Xsig_aug(0,i);
-		double p_y 		= Xsig_aug(1,i);
-		double v 		= Xsig_aug(2,i);
-		double yaw 		= Xsig_aug(3,i);
-		double yawd 		= Xsig_aug(4,i);
-		double nu_a 		= Xsig_aug(5,i);
-		double nu_yawdd 	= Xsig_aug(6,i);
-
-		//predicted state values
-		double px_p, py_p;
-
-		//avoid division by zero
-		if (fabs(yawd) > 0.001) {
-			px_p = p_x + v/yawd * ( sin (yaw + yawd*delta_t) - sin(yaw));
-			py_p = p_y + v/yawd * ( cos(yaw) - cos(yaw+yawd*delta_t) );
-		}
-		else {
-			px_p = p_x + v*delta_t*cos(yaw);
-			py_p = p_y + v*delta_t*sin(yaw);
-		}
-
-		double v_p = v;
-		double yaw_p = yaw + yawd*delta_t;
-		double yawd_p = yawd;
-
-		//add noise
-		px_p = px_p + 0.5*nu_a*delta_t*delta_t * cos(yaw);
-		py_p = py_p + 0.5*nu_a*delta_t*delta_t * sin(yaw);
-		v_p = v_p + nu_a*delta_t;
-
-		yaw_p = yaw_p + 0.5*nu_yawdd*delta_t*delta_t;
-		yawd_p = yawd_p + nu_yawdd*delta_t;
-
-		//write predicted sigma point into right column
-		Xsig_pred(0,i) = px_p;
-		Xsig_pred(1,i) = py_p;
-		Xsig_pred(2,i) = v_p;
-		Xsig_pred(3,i) = yaw_p;
-		Xsig_pred(4,i) = yawd_p;
-	}
-	return Xsig_pred;
-}
-
-/**Set weights
- * @param {int} lambda the distance of the Sigma Points relative to the mean
- * @param {int} n_aug the dimension of the augmented matrix */
-VectorXd UKF::SetWeights(int lambda, int n_aug){
-
-	VectorXd weights = VectorXd(2*n_aug+1);
-	double weight_0 = lambda/(lambda+n_aug);
-	weights(0) = weight_0;
-	for (int i=1; i<2*n_aug+1; i++)
-	{
-		double weight = 0.5/(n_aug+lambda);
-		weights(i) = weight;
-	}
-	return weights;
-}
-
-/** Predict state mean
- * @param {int} n_aug the dimension of the augmented matrix
- * @param {MatrixXd} Xsig_pred the predicted sigma points
- * @param {VectorXd} weights the weights sigma points based on the lambda value  */
-MatrixXd UKF::PredictMean(int n_aug, VectorXd weights, MatrixXd Xsig_pred){
-
-	VectorXd x = VectorXd(5);
-	 x.fill(0.0);
-	 for (int i = 0; i < 2 * n_aug + 1; i++)
-	 {  //iterate over sigma points
-		 x = x+ weights(i) * Xsig_pred.col(i);
-	 }
-	return x;
-}
-
-/** Predict covariance
- * @param {int} n_aug the dimension of the augmented matrix
- * @param {VectorXd} weights the weights sigma points based on the lambda value
- * @param {MatrixXd} Xsig_pred the predicted sigma points
- * @param {VectorXd} x the state */
-MatrixXd UKF::PredictCovariance(int n_aug, VectorXd weights, MatrixXd Xsig_pred, VectorXd x){
-
-	//predicted state covariance matrix
-	MatrixXd P = MatrixXd(5, 5);
-	//predicted state covariance matrix
-	P.fill(0.0);
-	for (int i = 0; i < 2 * n_aug + 1; i++)
-	{  //iterate over sigma points
-	    // state difference
-		VectorXd x_diff = Xsig_pred.col(i) - x;
-	    //angle normalization
-	    while (x_diff(3)> M_PI){x_diff(3)-=2.*M_PI;}
-	    while (x_diff(3)< -M_PI){x_diff(3)+=2.*M_PI;}
-	    P = P + weights(i) * x_diff * x_diff.transpose() ;
-	  }
-	return P;
 }
